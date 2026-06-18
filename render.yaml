@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: flower-paradise-bot
+    runtime: python
+    repo: https://github.com/your-username/flower-paradise-bot
+    plan: free
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: MANAGER_CHAT_ID
+        sync: false
+      - key: MODE
+        value: webhook
+      - key: WEBHOOK_URL
+        fromService:
+          name: flower-paradise-bot
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
