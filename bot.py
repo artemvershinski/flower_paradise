@@ -1,6 +1,5 @@
 import logging
 import os
-import asyncio
 import threading
 from fastapi import FastAPI
 import uvicorn
@@ -16,13 +15,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# FastAPI приложение для health check
+# FastAPI приложение
 app = FastAPI()
 
+# ==================== ЭНДПОИНТЫ ДЛЯ HEALTH CHECK ====================
+
 @app.get("/")
+@app.head("/")  # HEAD-запросы для UptimeRobot
+async def root():
+    return {"status": "ok", "service": "flower-paradise-bot"}
+
 @app.get("/health")
+@app.head("/health")  # HEAD-запросы для UptimeRobot
 async def health():
     return {"status": "ok", "service": "flower-paradise-bot"}
+
+# ==================== ЗАПУСК БОТА ====================
 
 def run_bot():
     """Запуск бота в polling-режиме"""
@@ -62,7 +70,10 @@ def run_bot():
         application.add_handler(conv_handler)
         
         logger.info("Starting bot in polling mode...")
-        application.run_polling(allowed_updates=["message", "callback_query"])
+        application.run_polling(
+            allowed_updates=["message", "callback_query"],
+            drop_pending_updates=True
+        )
         
     except Exception as e:
         logger.error(f"Bot error: {e}")
@@ -72,6 +83,8 @@ def run_web():
     port = int(os.environ.get("PORT", 10000))
     logger.info(f"Starting web server on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+# ==================== ТОЧКА ВХОДА ====================
 
 if __name__ == "__main__":
     # Запускаем веб-сервер в отдельном потоке
