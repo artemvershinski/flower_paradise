@@ -1,10 +1,8 @@
 import logging
 import asyncio
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
-from fastapi import FastAPI
-import uvicorn
 
-from config import BOT_TOKEN, MODE, WEBHOOK_URL, PORT
+from config import BOT_TOKEN
 from handlers import start, handle_callback, handle_text
 from states import States
 
@@ -14,11 +12,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
-
-async def setup_bot():
+async def main():
+    """Основная функция запуска бота в polling-режиме"""
     application = Application.builder().token(BOT_TOKEN).build()
     
+    # ConversationHandler
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -46,46 +44,9 @@ async def setup_bot():
     
     application.add_handler(conv_handler)
     
-    if MODE == "webhook" and WEBHOOK_URL:
-        webhook_url = f"{WEBHOOK_URL}/webhook"
-        await application.bot.set_webhook(webhook_url)
-        logger.info(f"Webhook set to {webhook_url}")
-    else:
-        logger.info("Starting in polling mode")
-    
-    return application
-
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Starting bot...")
-    app.bot_app = await setup_bot()
-    if MODE == "polling":
-        asyncio.create_task(app.bot_app.run_polling())
-
-@app.get("/")
-async def root():
-    return {"status": "ok", "service": "flower_paradise_bot"}
-
-@app.post("/webhook")
-async def webhook(request):
-    try:
-        update_data = await request.json()
-        await app.bot_app.process_update(update_data)
-        return {"status": "ok"}
-    except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        return {"status": "error"}
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy"}
+    # Запуск polling
+    logger.info("Starting bot in polling mode...")
+    await application.run_polling(allowed_updates=["message", "callback_query"])
 
 if __name__ == "__main__":
-    if MODE == "webhook":
-        uvicorn.run(app, host="0.0.0.0", port=PORT)
-    else:
-        asyncio.run(run_polling())
-
-async def run_polling():
-    application = await setup_bot()
-    await application.run_polling(allowed_updates=["message", "callback_query"])
+    asyncio.run(main())
