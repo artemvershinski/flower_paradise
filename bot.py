@@ -12,7 +12,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-async def main():
+def main():
     """Основная функция запуска бота в polling-режиме"""
     application = Application.builder().token(BOT_TOKEN).build()
     
@@ -46,7 +46,8 @@ async def main():
     
     # Запуск polling
     logger.info("Starting bot in polling mode...")
-    await application.run_polling(allowed_updates=["message", "callback_query"])
+    application.run_polling(allowed_updates=["message", "callback_query"])
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
+    
