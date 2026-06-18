@@ -15,4 +15,3 @@ services:
         sync: false
       - key: MODE
         value: polling
-    pythonVersion: 3.11.11
