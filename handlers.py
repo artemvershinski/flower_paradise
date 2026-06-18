@@ -543,4 +543,26 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         confirmation_text = (
             f"Order confirmation:\n\n"
-            f"Flower: {flower.name
+            f"Flower: {flower.name}\n"
+            f"Price: {flower.price}\n"
+            f"Address: {order['address']}\n"
+            f"Delivery: {order['delivery_date']} at {order['delivery_time']}\n"
+            f"Phone: {order['phone']}\n"
+            f"Comment: {comment or 'None'}"
+        )
+        
+        await update.message.reply_text(
+            confirmation_text,
+            reply_markup=order_confirmation()
+        )
+        return States.CONFIRM_ORDER
+    
+    # If we get here, assume it's a name for the order
+    data['name'] = text
+    data['state'] = States.ASK_ADDRESS
+    
+    await update.message.reply_text(
+        "Please enter your delivery address:",
+        reply_markup=None
+    )
+    return States.ASK_ADDRESS
