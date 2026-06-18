@@ -36,12 +36,16 @@ def main_menu(lang="ru"):
     return InlineKeyboardMarkup(keyboard)
 
 def main_menu_manager(lang="ru", is_manager=False):
-    keyboard = main_menu(lang).keyboard
+    # Получаем клавиатуру как список кнопок
+    menu = main_menu(lang)
+    keyboard = menu.inline_keyboard  # ✅ ПРАВИЛЬНО
+    
     if is_manager:
         if lang == "en":
             keyboard.insert(0, [InlineKeyboardButton("👔 Manager Panel", callback_data="manager_panel")])
         else:
             keyboard.insert(0, [InlineKeyboardButton("👔 Панель менеджера", callback_data="manager_panel")])
+    
     return InlineKeyboardMarkup(keyboard)
 
 # ==================== МЕНЮ МЕНЕДЖЕРА ====================
@@ -230,7 +234,7 @@ def back_to_main(lang="ru"):
     keyboard = [[InlineKeyboardButton(text, callback_data="back_main")]]
     return InlineKeyboardMarkup(keyboard)
 
-# ==================== КОНТАКТЫ (ИСПРАВЛЕНО) ====================
+# ==================== КОНТАКТЫ ====================
 
 def contacts_keyboard(lang="ru"):
     keyboard = []
