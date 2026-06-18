@@ -36,9 +36,9 @@ def main_menu(lang="ru"):
     return InlineKeyboardMarkup(keyboard)
 
 def main_menu_manager(lang="ru", is_manager=False):
-    # Получаем клавиатуру как список кнопок
+    # Получаем клавиатуру и конвертируем в список
     menu = main_menu(lang)
-    keyboard = menu.inline_keyboard  # ✅ ПРАВИЛЬНО
+    keyboard = list(menu.inline_keyboard)  # ✅ КОНВЕРТИРУЕМ В СПИСОК
     
     if is_manager:
         if lang == "en":
