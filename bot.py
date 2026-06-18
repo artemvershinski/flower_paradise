@@ -12,6 +12,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def main():
+    if not BOT_TOKEN:
+        logger.error("BOT_TOKEN is empty!")
+        return
+    
     application = Application.builder().token(BOT_TOKEN).build()
     
     conv_handler = ConversationHandler(
