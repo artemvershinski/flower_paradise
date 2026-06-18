@@ -14,6 +14,7 @@ class Database:
         self.client = None
         self.sheet = None
         self._orders = {}
+        self._order_counter = 0
         self._init_connection()
         self._init_sheets()
     
@@ -103,12 +104,12 @@ class Database:
     
     def _get_default_flowers(self) -> List[Flower]:
         return [
-            Flower(1, "Red Roses", 2500, "Classic bouquet of 51 red roses", "", "roses"),
-            Flower(2, "White Roses", 3000, "Delicate bouquet of white roses", "", "roses"),
-            Flower(3, "Exotic Mix", 4500, "Orchids, proteas and exotic flowers", "", "exotic"),
-            Flower(4, "Field Bouquet", 2000, "Chamomile, cornflowers and field flowers", "", "field"),
-            Flower(5, "Wedding Bouquet", 5000, "Elegant wedding bouquet", "", "wedding"),
-            Flower(6, "Holiday Bouquet", 3500, "Bright holiday bouquet", "", "holiday"),
+            Flower(1, "Алые розы", 2500, "Классический букет из 51 алой розы", "", "roses"),
+            Flower(2, "Белые розы", 3000, "Нежный букет из белых роз", "", "roses"),
+            Flower(3, "Экзотический микс", 4500, "Орхидеи, протеи и экзотические цветы", "", "exotic"),
+            Flower(4, "Полевой букет", 2000, "Ромашки, васильки и полевые цветы", "", "field"),
+            Flower(5, "Свадебный букет", 5000, "Изысканный свадебный букет", "", "wedding"),
+            Flower(6, "Праздничный букет", 3500, "Яркий праздничный букет", "", "holiday"),
         ]
     
     def get_flower(self, flower_id: int) -> Optional[Flower]:
@@ -124,6 +125,10 @@ class Database:
         
         order.created_at = datetime.now()
         order.updated_at = datetime.now()
+        
+        # Сохраняем в память
+        self._orders[order.id] = order
+        self._order_counter += 1
         
         try:
             if self.sheet:
@@ -146,68 +151,107 @@ class Database:
                 ])
                 logger.info(f"Order {order.id} saved to Google Sheets")
             else:
-                self._orders[order.id] = order
+                logger.info(f"Order {order.id} saved to memory")
                 
         except Exception as e:
-            logger.error(f"Error saving order: {e}")
-            self._orders[order.id] = order
+            logger.error(f"Error saving order to Google Sheets: {e}")
+            # Заказ уже сохранён в памяти
         
         return order.id
     
     def get_orders(self, user_id: Optional[int] = None) -> List[Order]:
+        # Сначала пробуем получить из Google Sheets
         try:
             if self.sheet:
                 ws = self.sheet.worksheet('orders')
                 data = ws.get_all_values()
-                if len(data) <= 1:
-                    return list(self._orders.values())
-                
-                orders = []
-                for row in data[1:]:
-                    if not row or not row[0]:
-                        continue
+                if len(data) > 1:
+                    orders = []
+                    for row in data[1:]:
+                        if not row or not row[0]:
+                            continue
+                        
+                        flower = Flower(
+                            id=int(row[4]) if row[4] else 0,
+                            name=row[5] if len(row) > 5 else "",
+                            price=int(row[6]) if len(row) > 6 and row[6] else 0,
+                            description="",
+                            image="",
+                            category=""
+                        )
+                        
+                        order = Order(
+                            id=row[0],
+                            user_id=int(row[1]) if row[1] else 0,
+                            user_name=row[2] if len(row) > 2 else "",
+                            user_phone=row[3] if len(row) > 3 else "",
+                            flower=flower,
+                            address=row[7] if len(row) > 7 else "",
+                            delivery_date=row[8] if len(row) > 8 else "",
+                            delivery_time=row[9] if len(row) > 9 else "",
+                            comment=row[10] if len(row) > 10 else None,
+                            status=OrderStatus(row[11]) if len(row) > 11 and row[11] else OrderStatus.NEW,
+                            created_at=datetime.strptime(row[12], '%Y-%m-%d %H:%M:%S') if len(row) > 12 and row[12] else None,
+                            updated_at=datetime.strptime(row[13], '%Y-%m-%d %H:%M:%S') if len(row) > 13 and row[13] else None
+                        )
+                        
+                        if not user_id or order.user_id == user_id:
+                            orders.append(order)
                     
-                    flower = Flower(
-                        id=int(row[4]) if row[4] else 0,
-                        name=row[5],
-                        price=int(row[6]) if row[6] else 0,
-                        description="",
-                        image="",
-                        category=""
-                    )
+                    # Обновляем память
+                    for o in orders:
+                        self._orders[o.id] = o
                     
-                    order = Order(
-                        id=row[0],
-                        user_id=int(row[1]),
-                        user_name=row[2],
-                        user_phone=row[3],
-                        flower=flower,
-                        address=row[7],
-                        delivery_date=row[8],
-                        delivery_time=row[9],
-                        comment=row[10] if len(row) > 10 else None,
-                        status=OrderStatus(row[11]) if row[11] else OrderStatus.NEW,
-                        created_at=datetime.strptime(row[12], '%Y-%m-%d %H:%M:%S') if row[12] else None,
-                        updated_at=datetime.strptime(row[13], '%Y-%m-%d %H:%M:%S') if row[13] else None
-                    )
-                    
-                    if not user_id or order.user_id == user_id:
-                        orders.append(order)
-                
-                return sorted(orders, key=lambda x: x.created_at or datetime.now(), reverse=True)
+                    return sorted(orders, key=lambda x: x.created_at or datetime.now(), reverse=True)
             
         except Exception as e:
-            logger.error(f"Error getting orders: {e}")
+            logger.error(f"Error getting orders from Google Sheets: {e}")
         
+        # Возвращаем из памяти
         orders = list(self._orders.values())
         if user_id:
             orders = [o for o in orders if o.user_id == user_id]
         return sorted(orders, key=lambda x: x.created_at or datetime.now(), reverse=True)
     
     def get_order(self, order_id: str) -> Optional[Order]:
-        for order in self.get_orders():
-            if order.id == order_id:
-                return order
+        # Сначала проверяем память
+        if order_id in self._orders:
+            return self._orders[order_id]
+        
+        # Ищем в Google Sheets
+        try:
+            if self.sheet:
+                ws = self.sheet.worksheet('orders')
+                data = ws.get_all_values()
+                for row in data[1:]:
+                    if row and row[0] == order_id:
+                        flower = Flower(
+                            id=int(row[4]) if row[4] else 0,
+                            name=row[5] if len(row) > 5 else "",
+                            price=int(row[6]) if len(row) > 6 and row[6] else 0,
+                            description="",
+                            image="",
+                            category=""
+                        )
+                        order = Order(
+                            id=row[0],
+                            user_id=int(row[1]) if row[1] else 0,
+                            user_name=row[2] if len(row) > 2 else "",
+                            user_phone=row[3] if len(row) > 3 else "",
+                            flower=flower,
+                            address=row[7] if len(row) > 7 else "",
+                            delivery_date=row[8] if len(row) > 8 else "",
+                            delivery_time=row[9] if len(row) > 9 else "",
+                            comment=row[10] if len(row) > 10 else None,
+                            status=OrderStatus(row[11]) if len(row) > 11 and row[11] else OrderStatus.NEW,
+                            created_at=datetime.strptime(row[12], '%Y-%m-%d %H:%M:%S') if len(row) > 12 and row[12] else None,
+                            updated_at=datetime.strptime(row[13], '%Y-%m-%d %H:%M:%S') if len(row) > 13 and row[13] else None
+                        )
+                        self._orders[order_id] = order
+                        return order
+        except Exception as e:
+            logger.error(f"Error getting order from Google Sheets: {e}")
+        
         return None
     
     def update_order_status(self, order_id: str, status: OrderStatus) -> bool:
@@ -219,16 +263,25 @@ class Database:
             order.status = status
             order.updated_at = datetime.now()
             
-            if self.sheet:
-                ws = self.sheet.worksheet('orders')
-                data = ws.get_all_values()
-                for i, row in enumerate(data):
-                    if row and row[0] == order_id:
-                        ws.update_cell(i+1, 12, status.value)
-                        ws.update_cell(i+1, 14, order.updated_at.strftime('%Y-%m-%d %H:%M:%S'))
-                        return True
-            
+            # Обновляем в памяти
             self._orders[order_id] = order
+            
+            # Обновляем в Google Sheets
+            if self.sheet:
+                try:
+                    ws = self.sheet.worksheet('orders')
+                    data = ws.get_all_values()
+                    for i, row in enumerate(data):
+                        if row and row[0] == order_id:
+                            ws.update_cell(i+1, 12, status.value)
+                            ws.update_cell(i+1, 14, order.updated_at.strftime('%Y-%m-%d %H:%M:%S'))
+                            logger.info(f"Order {order_id} status updated in Google Sheets")
+                            return True
+                except Exception as e:
+                    logger.error(f"Error updating order in Google Sheets: {e}")
+                    # Заказ уже обновлён в памяти
+                    return True
+            
             return True
             
         except Exception as e:
