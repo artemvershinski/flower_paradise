@@ -34,7 +34,7 @@ class Database:
                     GOOGLE_CREDENTIALS_FILE, scope
                 )
             else:
-                logger.warning("Google Sheets credentials not found")
+                logger.warning("Google Sheets credentials not found, using in-memory storage")
                 return
             
             self.client = gspread.authorize(credentials)
