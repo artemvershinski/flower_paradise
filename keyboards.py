@@ -1,83 +1,152 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from models import OrderStatus
 
-def main_menu(is_manager: bool = False):
+# ==================== ЯЗЫКИ ====================
+
+def language_keyboard():
     keyboard = [
-        [InlineKeyboardButton("Catalog", callback_data="catalog")],
-        [InlineKeyboardButton("Make Order", callback_data="order_flower")],
-        [InlineKeyboardButton("My Orders", callback_data="my_orders")],
-        [InlineKeyboardButton("Order Status", callback_data="order_status")],
-        [InlineKeyboardButton("Contacts", callback_data="contacts")],
+        [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru")],
+        [InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")],
     ]
+    return InlineKeyboardMarkup(keyboard)
+
+# ==================== ГЛАВНОЕ МЕНЮ ====================
+
+def main_menu(lang="ru"):
+    if lang == "en":
+        buttons = [
+            ("Catalog", "catalog"),
+            ("Make Order", "order_flower"),
+            ("My Orders", "my_orders"),
+            ("Order Status", "order_status"),
+            ("Contacts", "contacts"),
+            ("Change Language", "change_lang"),
+        ]
+    else:
+        buttons = [
+            ("🌸 Каталог", "catalog"),
+            ("🛒 Сделать заказ", "order_flower"),
+            ("📋 Мои заказы", "my_orders"),
+            ("📦 Статус заказа", "order_status"),
+            ("📞 Контакты", "contacts"),
+            ("🌐 Сменить язык", "change_lang"),
+        ]
     
+    keyboard = [[InlineKeyboardButton(text, callback_data=data)] for text, data in buttons]
+    return InlineKeyboardMarkup(keyboard)
+
+def main_menu_manager(lang="ru", is_manager=False):
+    keyboard = main_menu(lang).keyboard
     if is_manager:
-        keyboard.insert(0, [InlineKeyboardButton("Manager Panel", callback_data="manager_panel")])
+        if lang == "en":
+            keyboard.insert(0, [InlineKeyboardButton("👔 Manager Panel", callback_data="manager_panel")])
+        else:
+            keyboard.insert(0, [InlineKeyboardButton("👔 Панель менеджера", callback_data="manager_panel")])
+    return InlineKeyboardMarkup(keyboard)
+
+# ==================== МЕНЮ МЕНЕДЖЕРА ====================
+
+def manager_menu(lang="ru"):
+    if lang == "en":
+        buttons = [
+            ("All Orders", "manager_all_orders"),
+            ("New Orders", "manager_new_orders"),
+            ("Statistics", "manager_stats"),
+            ("Main Menu", "back_main"),
+        ]
+    else:
+        buttons = [
+            ("📋 Все заказы", "manager_all_orders"),
+            ("🆕 Новые заказы", "manager_new_orders"),
+            ("📊 Статистика", "manager_stats"),
+            ("🏠 Главное меню", "back_main"),
+        ]
     
+    keyboard = [[InlineKeyboardButton(text, callback_data=data)] for text, data in buttons]
     return InlineKeyboardMarkup(keyboard)
 
-def manager_menu():
-    keyboard = [
-        [InlineKeyboardButton("All Orders", callback_data="manager_all_orders")],
-        [InlineKeyboardButton("New Orders", callback_data="manager_new_orders")],
-        [InlineKeyboardButton("Statistics", callback_data="manager_stats")],
-        [InlineKeyboardButton("Main Menu", callback_data="back_main")],
-    ]
+# ==================== КАТАЛОГ ====================
+
+def categories_menu(lang="ru"):
+    if lang == "en":
+        buttons = [
+            ("Roses", "cat_roses"),
+            ("Exotic", "cat_exotic"),
+            ("Field", "cat_field"),
+            ("Wedding", "cat_wedding"),
+            ("Holiday", "cat_holiday"),
+            ("Back", "back_main"),
+        ]
+    else:
+        buttons = [
+            ("🌹 Розы", "cat_roses"),
+            ("🌺 Экзотические", "cat_exotic"),
+            ("🌻 Полевые", "cat_field"),
+            ("💐 Свадебные", "cat_wedding"),
+            ("🎄 Праздничные", "cat_holiday"),
+            ("🔙 Назад", "back_main"),
+        ]
+    
+    keyboard = [[InlineKeyboardButton(text, callback_data=data)] for text, data in buttons]
     return InlineKeyboardMarkup(keyboard)
 
-def categories_menu():
-    keyboard = [
-        [InlineKeyboardButton("Roses", callback_data="cat_roses")],
-        [InlineKeyboardButton("Exotic", callback_data="cat_exotic")],
-        [InlineKeyboardButton("Field", callback_data="cat_field")],
-        [InlineKeyboardButton("Wedding", callback_data="cat_wedding")],
-        [InlineKeyboardButton("Holiday", callback_data="cat_holiday")],
-        [InlineKeyboardButton("Back", callback_data="back_main")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def flowers_list(flowers, page=0, per_page=5):
+def flowers_list(flowers, page=0, per_page=5, lang="ru"):
     total = len(flowers)
     start = page * per_page
     end = min(start + per_page, total)
     
     keyboard = []
     for flower in flowers[start:end]:
-        status = "in stock" if flower.in_stock else "out of stock"
+        if lang == "ru":
+            status_text = "✅ в наличии" if flower.in_stock else "❌ нет в наличии"
+        else:
+            status_text = "✅ in stock" if flower.in_stock else "❌ out of stock"
+        
         keyboard.append([
             InlineKeyboardButton(
-                f"{flower.name} - {flower.price} ({status})",
+                f"{flower.name} - {flower.price}₽ ({status_text})",
                 callback_data=f"flower_{flower.id}"
             )
         ])
     
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton("<", callback_data=f"page_{page-1}"))
+        nav.append(InlineKeyboardButton("◀️", callback_data=f"page_{page-1}"))
     if end < total:
-        nav.append(InlineKeyboardButton(">", callback_data=f"page_{page+1}"))
+        nav.append(InlineKeyboardButton("▶️", callback_data=f"page_{page+1}"))
     if nav:
         keyboard.append(nav)
     
-    keyboard.append([InlineKeyboardButton("Back", callback_data="back_catalog")])
+    back_text = "🔙 Назад" if lang == "ru" else "🔙 Back"
+    keyboard.append([InlineKeyboardButton(back_text, callback_data="back_catalog")])
     return InlineKeyboardMarkup(keyboard)
 
-def flower_detail(flower):
+def flower_detail(flower, lang="ru"):
     keyboard = []
     
     if flower.in_stock:
-        keyboard.append([InlineKeyboardButton("Order", callback_data=f"order_{flower.id}")])
+        order_text = "🛒 Заказать" if lang == "ru" else "🛒 Order"
+        keyboard.append([InlineKeyboardButton(order_text, callback_data=f"order_{flower.id}")])
     
-    keyboard.append([InlineKeyboardButton("Back to list", callback_data="back_flowers")])
+    back_text = "🔙 Назад к списку" if lang == "ru" else "🔙 Back to list"
+    keyboard.append([InlineKeyboardButton(back_text, callback_data="back_flowers")])
     return InlineKeyboardMarkup(keyboard)
 
-def delivery_date_keyboard():
+# ==================== ДОСТАВКА ====================
+
+def delivery_date_keyboard(lang="ru"):
     from datetime import datetime, timedelta
     keyboard = []
     
     today = datetime.now()
+    if lang == "ru":
+        days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    else:
+        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    
     for i in range(7):
         date = today + timedelta(days=i)
-        day_name = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][date.weekday()]
+        day_name = days[date.weekday()]
         date_str = date.strftime("%d.%m.%Y")
         keyboard.append([
             InlineKeyboardButton(
@@ -86,30 +155,43 @@ def delivery_date_keyboard():
             )
         ])
     
-    keyboard.append([InlineKeyboardButton("Back", callback_data="back_order")])
+    back_text = "🔙 Назад" if lang == "ru" else "🔙 Back"
+    keyboard.append([InlineKeyboardButton(back_text, callback_data="back_order")])
     return InlineKeyboardMarkup(keyboard)
 
-def delivery_time_keyboard():
-    keyboard = [
-        [InlineKeyboardButton("09:00 - 11:00", callback_data="time_09-11")],
-        [InlineKeyboardButton("11:00 - 13:00", callback_data="time_11-13")],
-        [InlineKeyboardButton("13:00 - 15:00", callback_data="time_13-15")],
-        [InlineKeyboardButton("15:00 - 17:00", callback_data="time_15-17")],
-        [InlineKeyboardButton("17:00 - 19:00", callback_data="time_17-19")],
-        [InlineKeyboardButton("19:00 - 21:00", callback_data="time_19-21")],
-        [InlineKeyboardButton("Back", callback_data="back_order")],
+def delivery_time_keyboard(lang="ru"):
+    times = [
+        ("09:00 - 11:00", "time_09-11"),
+        ("11:00 - 13:00", "time_11-13"),
+        ("13:00 - 15:00", "time_13-15"),
+        ("15:00 - 17:00", "time_15-17"),
+        ("17:00 - 19:00", "time_17-19"),
+        ("19:00 - 21:00", "time_19-21"),
     ]
+    
+    keyboard = [[InlineKeyboardButton(t[0], callback_data=t[1])] for t in times]
+    back_text = "🔙 Назад" if lang == "ru" else "🔙 Back"
+    keyboard.append([InlineKeyboardButton(back_text, callback_data="back_order")])
     return InlineKeyboardMarkup(keyboard)
 
-def order_confirmation():
-    keyboard = [
-        [InlineKeyboardButton("Confirm order", callback_data="confirm_order")],
-        [InlineKeyboardButton("Edit", callback_data="edit_order")],
-        [InlineKeyboardButton("Cancel", callback_data="cancel_order")],
-    ]
+def order_confirmation(lang="ru"):
+    if lang == "en":
+        buttons = [
+            ("✅ Confirm order", "confirm_order"),
+            ("✏️ Edit", "edit_order"),
+            ("❌ Cancel", "cancel_order"),
+        ]
+    else:
+        buttons = [
+            ("✅ Подтвердить заказ", "confirm_order"),
+            ("✏️ Изменить", "edit_order"),
+            ("❌ Отменить", "cancel_order"),
+        ]
+    
+    keyboard = [[InlineKeyboardButton(text, callback_data=data)] for text, data in buttons]
     return InlineKeyboardMarkup(keyboard)
 
-def status_change_keyboard(order_id, current_status):
+def status_change_keyboard(order_id, current_status, lang="ru"):
     statuses = [
         OrderStatus.NEW,
         OrderStatus.CONFIRMED,
@@ -119,29 +201,47 @@ def status_change_keyboard(order_id, current_status):
         OrderStatus.CANCELLED,
     ]
     
+    status_names_ru = {
+        "New": "🆕 Новый",
+        "Confirmed": "✅ Подтверждён",
+        "Preparing": "👨‍🍳 Готовится",
+        "Delivery": "🚚 В доставке",
+        "Delivered": "📦 Доставлен",
+        "Cancelled": "❌ Отменён",
+    }
+    
     keyboard = []
     for status in statuses:
         if status.value != current_status:
+            label = status.value if lang == "en" else status_names_ru.get(status.value, status.value)
             keyboard.append([
                 InlineKeyboardButton(
-                    f"Set {status.value}",
+                    f"➡️ {label}",
                     callback_data=f"change_status_{order_id}_{status.value}"
                 )
             ])
     
-    keyboard.append([InlineKeyboardButton("Back", callback_data="back_orders")])
+    back_text = "🔙 Назад" if lang == "ru" else "🔙 Back"
+    keyboard.append([InlineKeyboardButton(back_text, callback_data="back_orders")])
     return InlineKeyboardMarkup(keyboard)
 
-def back_to_main():
-    keyboard = [
-        [InlineKeyboardButton("Main Menu", callback_data="back_main")],
-    ]
+def back_to_main(lang="ru"):
+    text = "🏠 Главное меню" if lang == "ru" else "🏠 Main Menu"
+    keyboard = [[InlineKeyboardButton(text, callback_data="back_main")]]
     return InlineKeyboardMarkup(keyboard)
 
-def contacts_keyboard():
-    keyboard = [
-        [InlineKeyboardButton("Call", url="tel:+79991234567")],
-        [InlineKeyboardButton("Map", url="https://maps.google.com/?q=Flower+Paradise")],
-        [InlineKeyboardButton("Main Menu", callback_data="back_main")],
-    ]
+# ==================== КОНТАКТЫ (ИСПРАВЛЕНО) ====================
+
+def contacts_keyboard(lang="ru"):
+    keyboard = []
+    
+    if lang == "ru":
+        keyboard.append([InlineKeyboardButton("📞 Позвонить", callback_data="call_phone")])
+        keyboard.append([InlineKeyboardButton("📍 Открыть карту", url="https://maps.google.com/?q=Flower+Paradise")])
+    else:
+        keyboard.append([InlineKeyboardButton("📞 Call", callback_data="call_phone")])
+        keyboard.append([InlineKeyboardButton("📍 Open map", url="https://maps.google.com/?q=Flower+Paradise")])
+    
+    back_text = "🏠 Главное меню" if lang == "ru" else "🏠 Main Menu"
+    keyboard.append([InlineKeyboardButton(back_text, callback_data="back_main")])
     return InlineKeyboardMarkup(keyboard)
