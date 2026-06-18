@@ -547,4 +547,304 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
+        return States.MANAGER_VIEW_ORDERS    
+    if callback_data == "manager_new_orders":
+        if not is_manager:
+            await query.edit_message_text(
+                get_text("manager_access_denied", lang),
+                reply_markup=back_to_main(lang)
+            )
+            return States.MAIN_MENU
+        
+        orders = db.get_orders()
+        new_orders = [o for o in orders if o.status == OrderStatus.NEW]
+        
+        if not new_orders:
+            await query.edit_message_text(
+                get_text("manager_no_orders", lang),
+                reply_markup=manager_menu(lang)
+            )
+            return States.MANAGER_MENU
+        
+        text = get_text("manager_new_orders", lang).format(count=len(new_orders))
+        keyboard = []
+        for order in new_orders[:10]:
+            text += f"🆔 {order.id} | {order.flower.name} | {order.user_name}\n"
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"📋 {order.id} - {order.flower.name}",
+                    callback_data=f"view_order_{order.id}"
+                )
+            ])
+        
+        keyboard.append([InlineKeyboardButton("🔙 Назад" if lang == "ru" else "🔙 Back", callback_data="manager_panel")])
+        
+        await query.edit_message_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
         return States.MANAGER_VIEW_ORDERS
+    
+    if callback_data == "manager_stats":
+        if not is_manager:
+            await query.edit_message_text(
+                get_text("manager_access_denied", lang),
+                reply_markup=back_to_main(lang)
+            )
+            return States.MAIN_MENU
+        
+        orders = db.get_orders()
+        total = len(orders)
+        new_count = len([o for o in orders if o.status == OrderStatus.NEW])
+        delivered = len([o for o in orders if o.status == OrderStatus.DELIVERED])
+        cancelled = len([o for o in orders if o.status == OrderStatus.CANCELLED])
+        
+        await query.edit_message_text(
+            get_text("manager_stats", lang).format(
+                total=total,
+                new=new_count,
+                delivered=delivered,
+                cancelled=cancelled
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=manager_menu(lang)
+        )
+        return States.MANAGER_MENU
+    
+    if callback_data == "back_orders":
+        await query.edit_message_text(
+            get_text("manager_panel", lang),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=manager_menu(lang)
+        )
+        return States.MANAGER_MENU
+    
+    # ========== ПРОСМОТР ЗАКАЗА МЕНЕДЖЕРОМ ==========
+    if callback_data.startswith("view_order_"):
+        order_id = callback_data.replace("view_order_", "")
+        order = db.get_order(order_id)
+        if not order:
+            await query.edit_message_text(
+                get_text("manager_no_orders", lang),
+                reply_markup=manager_menu(lang)
+            )
+            return States.MANAGER_MENU
+        
+        status_ru = {
+            "New": "🆕 Новый",
+            "Confirmed": "✅ Подтверждён",
+            "Preparing": "👨‍🍳 Готовится",
+            "Delivery": "🚚 В доставке",
+            "Delivered": "📦 Доставлен",
+            "Cancelled": "❌ Отменён",
+        }.get(order.status.value, order.status.value)
+        
+        status_display = status_ru if lang == "ru" else order.status.value
+        
+        text = get_text("manager_order_detail", lang).format(
+            id=order.id,
+            flower=order.flower.name,
+            price=order.flower.price,
+            customer=order.user_name,
+            phone=order.user_phone,
+            address=order.address,
+            date=order.delivery_date,
+            time=order.delivery_time,
+            status=status_display,
+            comment=order.comment or "—"
+        )
+        
+        await query.edit_message_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=status_change_keyboard(order_id, order.status.value, lang)
+        )
+        return States.MANAGER_CHANGE_STATUS
+    
+    # ========== ИЗМЕНЕНИЕ СТАТУСА ==========
+    if callback_data.startswith("change_status_"):
+        parts = callback_data.split("_")
+        order_id = parts[2]
+        new_status = "_".join(parts[3:])
+        
+        order = db.get_order(order_id)
+        if not order:
+            await query.edit_message_text(
+                get_text("manager_no_orders", lang),
+                reply_markup=manager_menu(lang)
+            )
+            return States.MANAGER_MENU
+        
+        status_map = {
+            "New": OrderStatus.NEW,
+            "Confirmed": OrderStatus.CONFIRMED,
+            "Preparing": OrderStatus.PREPARING,
+            "Delivery": OrderStatus.DELIVERY,
+            "Delivered": OrderStatus.DELIVERED,
+            "Cancelled": OrderStatus.CANCELLED,
+        }
+        
+        status = status_map.get(new_status)
+        if not status:
+            await query.edit_message_text(
+                get_text("manager_no_orders", lang),
+                reply_markup=manager_menu(lang)
+            )
+            return States.MANAGER_MENU
+        
+        db.update_order_status(order_id, status)
+        
+        try:
+            status_ru = {
+                "New": "🆕 Новый",
+                "Confirmed": "✅ Подтверждён",
+                "Preparing": "👨‍🍳 Готовится",
+                "Delivery": "🚚 В доставке",
+                "Delivered": "📦 Доставлен",
+                "Cancelled": "❌ Отменён",
+            }.get(status.value, status.value)
+            
+            customer_lang = get_user_data(order.user_id).get("lang", "ru")
+            status_display = status_ru if customer_lang == "ru" else status.value
+            
+            await context.bot.send_message(
+                chat_id=order.user_id,
+                text=get_text("customer_status_update", customer_lang).format(
+                    id=order_id,
+                    status=status_display
+                )
+            )
+        except Exception as e:
+            logger.error(f"Could not notify customer: {e}")
+        
+        await query.edit_message_text(
+            get_text("manager_status_updated", lang).format(id=order_id, status=status.value),
+            reply_markup=manager_menu(lang)
+        )
+        return States.MANAGER_MENU
+    
+    return States.MAIN_MENU
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    data = get_user_data(user_id)
+    lang = data.get("lang", DEFAULT_LANGUAGE)
+    text = update.message.text.strip()
+    
+    state = data.get("state")
+    
+    # ========== СТАТУС ЗАКАЗА ==========
+    if state == States.ORDER_STATUS_INPUT:
+        order = db.get_order(text)
+        if not order:
+            await update.message.reply_text(
+                get_text("order_status_not_found", lang),
+                reply_markup=back_to_main(lang)
+            )
+            data["state"] = None
+            return States.MAIN_MENU
+        
+        if order.user_id != user_id:
+            await update.message.reply_text(
+                get_text("manager_access_denied", lang),
+                reply_markup=back_to_main(lang)
+            )
+            data["state"] = None
+            return States.MAIN_MENU
+        
+        status_ru = {
+            "New": "🆕 Новый",
+            "Confirmed": "✅ Подтверждён",
+            "Preparing": "👨‍🍳 Готовится",
+            "Delivery": "🚚 В доставке",
+            "Delivered": "📦 Доставлен",
+            "Cancelled": "❌ Отменён",
+        }.get(order.status.value, order.status.value)
+        
+        status_display = status_ru if lang == "ru" else order.status.value
+        
+        await update.message.reply_text(
+            get_text("order_status_text", lang).format(
+                id=order.id,
+                flower=order.flower.name,
+                status=status_display,
+                date=order.delivery_date,
+                time=order.delivery_time
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=back_to_main(lang)
+        )
+        data["state"] = None
+        return States.MAIN_MENU
+    
+    # ========== ИМЯ ==========
+    if not data.get("order"):
+        data["order"] = {}
+    
+    if not data["order"].get("name"):
+        data["order"]["name"] = text
+        await update.message.reply_text(
+            get_text("ask_address", lang).format(name=text),
+            reply_markup=None
+        )
+        return States.ASK_ADDRESS
+    
+    # ========== АДРЕС ==========
+    if not data["order"].get("address"):
+        data["order"]["address"] = text
+        await update.message.reply_text(
+            get_text("ask_delivery_date", lang),
+            reply_markup=delivery_date_keyboard(lang)
+        )
+        return States.ASK_DELIVERY_DATE
+    
+    # ========== ТЕЛЕФОН ==========
+    if not data["order"].get("phone"):
+        data["order"]["phone"] = text
+        await update.message.reply_text(
+            get_text("ask_comment", lang),
+            reply_markup=None
+        )
+        return States.ASK_COMMENT
+    
+    # ========== КОММЕНТАРИЙ ==========
+    if not data["order"].get("comment"):
+        comment = text if text.lower() not in ["нет", "no", "skip"] else ""
+        data["order"]["comment"] = comment
+        
+        flower = data.get("selected_flower")
+        if not flower:
+            await update.message.reply_text(
+                get_text("flower_not_found", lang),
+                reply_markup=back_to_main(lang)
+            )
+            return States.MAIN_MENU
+        
+        order_data = data["order"]
+        comment_text = comment or ("—" if lang == "ru" else "None")
+        
+        confirm_text = get_text("confirm_order", lang).format(
+            flower=flower.name,
+            price=flower.price,
+            address=order_data.get("address", ""),
+            date=order_data.get("delivery_date", ""),
+            time=order_data.get("delivery_time", ""),
+            phone=order_data.get("phone", ""),
+            comment=comment_text
+        )
+        
+        await update.message.reply_text(
+            confirm_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=order_confirmation(lang)
+        )
+        return States.CONFIRM_ORDER
+    
+    # Если ничего не подошло — спрашиваем имя
+    data["order"]["name"] = text
+    await update.message.reply_text(
+        get_text("ask_address", lang).format(name=text),
+        reply_markup=None
+    )
+    return States.ASK_ADDRESS
