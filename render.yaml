@@ -2,19 +2,17 @@ services:
   - type: web
     name: flower-paradise-bot
     runtime: python
-    repo: https://github.com/your-username/flower-paradise-bot
+    region: oregon
     plan: free
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: python bot.py
     envVars:
       - key: BOT_TOKEN
         sync: false
       - key: MANAGER_CHAT_ID
         sync: false
       - key: MODE
-        value: webhook
-      - key: WEBHOOK_URL
-        fromService:
-          name: flower-paradise-bot
-          type: web
-          envVarKey: RENDER_EXTERNAL_URL
-    buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+        value: polling
+    pythonVersion: 3.11.11
