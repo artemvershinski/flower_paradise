@@ -1,5 +1,4 @@
 import logging
-import re
 from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler
@@ -163,15 +162,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return States.VIEW_FLOWER
     
-    # Order flower
-    if callback_data.startswith("order_"):
-        if "order_flower" in callback_data:
-            await query.edit_message_text(
-                "Select category first:",
-                reply_markup=categories_menu()
-            )
-            return States.SELECT_CATEGORY
-        
+    # Order flower from detail view
+    if callback_data.startswith("order_") and not callback_data.startswith("order_flower"):
         flower_id = int(callback_data.split("_")[1])
         flower = db.get_flower(flower_id)
         if not flower:
@@ -182,14 +174,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return States.MAIN_MENU
         
         data['selected_flower'] = flower
-        data['order'] = {}
+        data['state'] = States.ASK_NAME
         
         await query.edit_message_text(
             f"Ordering: {flower.name}\n\n"
-            "Please enter your delivery address:",
+            "Please enter your full name:",
             reply_markup=None
         )
-        return States.ASK_ADDRESS
+        return States.ASK_NAME
     
     # Order from main menu
     if callback_data == "order_flower":
@@ -252,7 +244,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Notify manager
         await context.bot.send_message(
             chat_id=MANAGER_CHAT_ID,
-            text=f"New order!n\n"
+            text=f"New order!\n\n"
                  f"Order ID: {order_id}\n"
                  f"Flower: {flower.name}\n"
                  f"Price: {flower.price}\n"
@@ -283,6 +275,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return States.MAIN_MENU
     
+    # Edit order
+    if callback_data == "edit_order":
+        await query.edit_message_text(
+            "Please enter your delivery address again:",
+            reply_markup=None
+        )
+        data['state'] = States.ASK_ADDRESS
+        return States.ASK_ADDRESS
+    
     # My orders
     if callback_data == "my_orders":
         orders = db.get_orders(user_id)
@@ -300,7 +301,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Flower: {order.flower.name}\n"
                 f"Status: {order.status.value}\n"
                 f"Date: {order.delivery_date}\n"
-                f"---\n"
+                "---\n"
             )
         
         await query.edit_message_text(
@@ -315,6 +316,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Enter your order ID:",
             reply_markup=None
         )
+        data['state'] = States.ORDER_STATUS
         return States.ORDER_STATUS
     
     # Manager panel
@@ -350,31 +352,86 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return States.MANAGER_MENU
         
-        text = "All orders:\n\n"
-        for order in orders[:20]:
-            text += (
-                f"ID: {order.id}\n"
-                f"Flower: {order.flower.name}\n"
-                f"Customer: {order.user_name}\n"
-                f"Status: {order.status.value}\n"
-                f"---\n"
-            )
-        
+        # Build keyboard with orders
         keyboard = []
         for order in orders[:10]:
             keyboard.append([
                 InlineKeyboardButton(
-                    f"Order {order.id}",
+                    f"Order {order.id} - {order.flower.name}",
                     callback_data=f"view_order_{order.id}"
                 )
             ])
         keyboard.append([InlineKeyboardButton("Back", callback_data="manager_panel")])
         
         await query.edit_message_text(
-            text,
+            "All orders (last 10):",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return States.MANAGER_VIEW_ORDERS
+    
+    # Manager new orders
+    if callback_data == "manager_new_orders":
+        if not get_user_role(user_id):
+            await query.edit_message_text(
+                "Access denied.",
+                reply_markup=back_to_main()
+            )
+            return States.MAIN_MENU
+        
+        orders = db.get_orders()
+        new_orders = [o for o in orders if o.status == OrderStatus.NEW]
+        
+        if not new_orders:
+            await query.edit_message_text(
+                "No new orders.",
+                reply_markup=manager_menu()
+            )
+            return States.MANAGER_MENU
+        
+        keyboard = []
+        for order in new_orders[:10]:
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"Order {order.id} - {order.flower.name}",
+                    callback_data=f"view_order_{order.id}"
+                )
+            ])
+        keyboard.append([InlineKeyboardButton("Back", callback_data="manager_panel")])
+        
+        await query.edit_message_text(
+            f"New orders ({len(new_orders)}):",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return States.MANAGER_VIEW_ORDERS
+    
+    # Manager statistics
+    if callback_data == "manager_stats":
+        if not get_user_role(user_id):
+            await query.edit_message_text(
+                "Access denied.",
+                reply_markup=back_to_main()
+            )
+            return States.MAIN_MENU
+        
+        orders = db.get_orders()
+        total = len(orders)
+        new_count = len([o for o in orders if o.status == OrderStatus.NEW])
+        delivered = len([o for o in orders if o.status == OrderStatus.DELIVERED])
+        cancelled = len([o for o in orders if o.status == OrderStatus.CANCELLED])
+        
+        stats_text = (
+            f"Statistics:\n\n"
+            f"Total orders: {total}\n"
+            f"New: {new_count}\n"
+            f"Delivered: {delivered}\n"
+            f"Cancelled: {cancelled}"
+        )
+        
+        await query.edit_message_text(
+            stats_text,
+            reply_markup=manager_menu()
+        )
+        return States.MANAGER_MENU
     
     # View specific order
     if callback_data.startswith("view_order_"):
@@ -386,8 +443,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=manager_menu()
             )
             return States.MANAGER_MENU
-        
-        data['viewing_order'] = order_id
         
         text = (
             f"Order Details\n\n"
@@ -442,10 +497,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.update_order_status(order_id, status)
         
         # Notify customer
-        await context.bot.send_message(
-            chat_id=order.user_id,
-            text=f"Order {order_id} status updated to: {status.value}"
-        )
+        try:
+            await context.bot.send_message(
+                chat_id=order.user_id,
+                text=f"Order {order_id} status updated to: {status.value}"
+            )
+        except Exception as e:
+            logger.error(f"Could not notify customer: {e}")
         
         await query.edit_message_text(
             f"Order {order_id} status updated to: {status.value}",
@@ -472,16 +530,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     data = get_user_data(user_id)
-    text = update.message.text
+    text = update.message.text.strip()
+    
+    state = data.get('state')
     
     # Order status check
-    if data.get('state') == States.ORDER_STATUS:
-        order = db.get_order(text.strip())
+    if state == States.ORDER_STATUS:
+        order = db.get_order(text)
         if not order:
             await update.message.reply_text(
                 "Order not found. Please check your order ID.",
                 reply_markup=back_to_main()
             )
+            data['state'] = None
             return States.MAIN_MENU
         
         if order.user_id != user_id:
@@ -489,6 +550,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Access denied.",
                 reply_markup=back_to_main()
             )
+            data['state'] = None
             return States.MAIN_MENU
         
         status_text = (
@@ -502,10 +564,23 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             status_text,
             reply_markup=back_to_main()
         )
+        data['state'] = None
         return States.MAIN_MENU
     
+    # Name input
+    if state == States.ASK_NAME or not data.get('name'):
+        data['name'] = text
+        data['state'] = States.ASK_ADDRESS
+        
+        await update.message.reply_text(
+            f"Thank you, {text}!\n\n"
+            "Please enter your delivery address:",
+            reply_markup=None
+        )
+        return States.ASK_ADDRESS
+    
     # Address input
-    if data.get('state') == States.ASK_ADDRESS:
+    if state == States.ASK_ADDRESS:
         data['address'] = text
         data['state'] = States.ASK_DELIVERY_DATE
         
@@ -516,22 +591,30 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return States.ASK_DELIVERY_DATE
     
     # Phone input
-    if data.get('state') == States.ASK_PHONE:
+    if state == States.ASK_PHONE:
         data['phone'] = text
         data['state'] = States.ASK_COMMENT
         
         await update.message.reply_text(
-            "Any comments for your order? (or type 'no')",
+            "Any comments for your order? (type 'skip' for none)",
             reply_markup=None
         )
         return States.ASK_COMMENT
     
     # Comment input
-    if data.get('state') == States.ASK_COMMENT:
-        comment = text if text.lower() != 'no' else ''
+    if state == States.ASK_COMMENT:
+        comment = text if text.lower() != 'skip' else ''
         
         flower = data.get('selected_flower')
-        order = {
+        if not flower:
+            await update.message.reply_text(
+                "Error: no flower selected. Please start over.",
+                reply_markup=back_to_main()
+            )
+            data['state'] = None
+            return States.MAIN_MENU
+        
+        order_data = {
             'name': data.get('name', ''),
             'phone': data.get('phone', ''),
             'address': data.get('address', ''),
@@ -539,15 +622,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'delivery_time': data.get('delivery_time', ''),
             'comment': comment
         }
-        data['order'] = order
+        data['order'] = order_data
         
+        # Show confirmation
         confirmation_text = (
             f"Order confirmation:\n\n"
             f"Flower: {flower.name}\n"
             f"Price: {flower.price}\n"
-            f"Address: {order['address']}\n"
-            f"Delivery: {order['delivery_date']} at {order['delivery_time']}\n"
-            f"Phone: {order['phone']}\n"
+            f"Address: {order_data['address']}\n"
+            f"Delivery: {order_data['delivery_date']} at {order_data['delivery_time']}\n"
+            f"Phone: {order_data['phone']}\n"
             f"Comment: {comment or 'None'}"
         )
         
@@ -555,13 +639,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             confirmation_text,
             reply_markup=order_confirmation()
         )
+        data['state'] = None
         return States.CONFIRM_ORDER
     
-    # If we get here, assume it's a name for the order
+    # If we get here, ask for name
     data['name'] = text
     data['state'] = States.ASK_ADDRESS
     
     await update.message.reply_text(
+        f"Thank you, {text}!\n\n"
         "Please enter your delivery address:",
         reply_markup=None
     )
