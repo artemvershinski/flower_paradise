@@ -1,0 +1,22 @@
+from enum import Enum
+
+class States(int, Enum):
+    """Состояния диалога"""
+    MAIN_MENU = 0
+    SELECT_CATEGORY = 1
+    SELECT_FLOWER = 2
+    VIEW_FLOWER = 3
+    ORDER_FLOWER = 4
+    ASK_ADDRESS = 5
+    ASK_DELIVERY_DATE = 6
+    ASK_DELIVERY_TIME = 7
+    ASK_PHONE = 8
+    ASK_COMMENT = 9
+    CONFIRM_ORDER = 10
+    ORDER_HISTORY = 11
+    ORDER_STATUS = 12
+    MANAGER_MENU = 13
+    MANAGER_VIEW_ORDERS = 14
+    MANAGER_VIEW_ORDER = 15
+    MANAGER_CHANGE_STATUS = 16
+    MANAGER_SELECT_STATUS = 17
